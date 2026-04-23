@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meme Generator</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="app">
+        <header>
+            <h1>Meme Generator</h1>
+            <p class="subtitle">Upload audio + pick a clip + add captions = viral meme</p>
+        </header>
+
+        <div class="steps">
+            <!-- Step 1: Audio -->
+            <section class="step" id="step-audio">
+                <div class="step-header">
+                    <span class="step-num">1</span>
+                    <h2>Upload Audio</h2>
+                </div>
+                <div class="upload-zone" id="audio-drop">
+                    <div class="upload-icon">&#9835;</div>
+                    <p>Drag & drop audio or <label for="audio-input" class="browse-link">browse</label></p>
+                    <p class="hint">MP3, WAV, M4A, OGG, AAC</p>
+                    <input type="file" id="audio-input" accept=".mp3,.wav,.m4a,.ogg,.aac,.flac" hidden>
+                </div>
+                <div class="audio-preview" id="audio-preview" style="display:none">
+                    <div class="audio-info">
+                        <span class="audio-name" id="audio-name"></span>
+                        <span class="audio-duration" id="audio-duration"></span>
+                        <button class="btn-icon" id="audio-remove" title="Remove">&times;</button>
+                    </div>
+                    <audio id="audio-player" controls></audio>
+                </div>
+            </section>
+
+            <!-- Step 2: Video Clip -->
+            <section class="step" id="step-video">
+                <div class="step-header">
+                    <span class="step-num">2</span>
+                    <h2>Choose Video Clip</h2>
+                </div>
+                <div class="tabs">
+                    <button class="tab active" data-tab="library">Clip Library</button>
+                    <button class="tab" data-tab="upload">Upload Custom</button>
+                </div>
+                <div class="tab-content" id="tab-library">
+                    <div class="clip-grid" id="clip-grid"></div>
+                </div>
+                <div class="tab-content" id="tab-upload" style="display:none">
+                    <div class="upload-zone" id="video-drop">
+                        <div class="upload-icon">&#9654;</div>
+                        <p>Drag & drop video or <label for="video-input" class="browse-link">browse</label></p>
+                        <p class="hint">MP4, MOV, WEBM</p>
+                        <input type="file" id="video-input" accept=".mp4,.mov,.webm,.avi,.mkv" hidden>
+                    </div>
+                    <div class="custom-clip-preview" id="custom-clip-preview" style="display:none">
+                        <video id="custom-clip-video" muted loop></video>
+                        <div class="custom-clip-info">
+                            <span id="custom-clip-name"></span>
+                            <button class="btn-icon" id="custom-clip-remove">&times;</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 3: Captions -->
+            <section class="step" id="step-captions">
+                <div class="step-header">
+                    <span class="step-num">3</span>
+                    <h2>Add Captions <span class="optional">(optional)</span></h2>
+                </div>
+                <div class="caption-actions">
+                    <button class="btn btn-secondary" id="add-caption">+ Add Caption</button>
+                </div>
+                <div class="captions-editor">
+                    <div class="caption-list" id="caption-list"></div>
+                </div>
+                <div class="timeline-container" id="timeline-container" style="display:none">
+                    <div class="timeline-label">Timeline</div>
+                    <div class="timeline" id="timeline">
+                        <div class="timeline-track" id="timeline-track"></div>
+                    </div>
+                    <div class="timeline-times">
+                        <span>0:00</span>
+                        <span id="timeline-end">0:00</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 4: Export Settings & Generate -->
+            <section class="step" id="step-generate">
+                <div class="step-header">
+                    <span class="step-num">4</span>
+                    <h2>Export Settings</h2>
+                </div>
+
+                <div class="setting-group">
+                    <h3 class="setting-label">Format</h3>
+                    <div class="preset-grid" id="preset-grid">
+                        <button class="preset-card active" data-preset="tiktok" data-w="1080" data-h="1920">
+                            <div class="preset-ratio preset-ratio-9-16"></div>
+                            <span class="preset-name">TikTok / Reels</span>
+                            <span class="preset-detail">1080x1920 &middot; 9:16</span>
+                        </button>
+                        <button class="preset-card" data-preset="ig_feed" data-w="1080" data-h="1080">
+                            <div class="preset-ratio preset-ratio-1-1"></div>
+                            <span class="preset-name">IG Feed</span>
+                            <span class="preset-detail">1080x1080 &middot; 1:1</span>
+                        </button>
+                        <button class="preset-card" data-preset="ig_post" data-w="1080" data-h="1350">
+                            <div class="preset-ratio preset-ratio-4-5"></div>
+                            <span class="preset-name">IG Post</span>
+                            <span class="preset-detail">1080x1350 &middot; 4:5</span>
+                        </button>
+                        <button class="preset-card" data-preset="twitter" data-w="1280" data-h="720">
+                            <div class="preset-ratio preset-ratio-16-9"></div>
+                            <span class="preset-name">Twitter / X</span>
+                            <span class="preset-detail">1280x720 &middot; 16:9</span>
+                        </button>
+                        <button class="preset-card" data-preset="youtube" data-w="1920" data-h="1080">
+                            <div class="preset-ratio preset-ratio-16-9"></div>
+                            <span class="preset-name">YouTube</span>
+                            <span class="preset-detail">1920x1080 &middot; 16:9</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="setting-group">
+                    <div class="toggle-row">
+                        <div>
+                            <h3 class="setting-label" style="margin-bottom:2px">Visual Filter</h3>
+                            <p class="hint">Apply a visual effect to your meme</p>
+                        </div>
+                    </div>
+                    <div class="filter-grid" id="filter-grid">
+                        <button class="filter-btn active" data-filter="none">Original</button>
+                        <button class="filter-btn" data-filter="vintage">Vintage</button>
+                        <button class="filter-btn" data-filter="high_contrast">High Contrast</button>
+                        <button class="filter-btn" data-filter="bw">B&W</button>
+                        <button class="filter-btn" data-filter="warm">Warm</button>
+                        <button class="filter-btn" data-filter="cool">Cool</button>
+                        <button class="filter-btn" data-filter="neon">Neon</button>
+                        <button class="filter-btn" data-filter="dreamy">Dreamy</button>
+                    </div>
+                </div>
+
+                <div class="generate-area">
+                    <div class="checklist" id="checklist">
+                        <div class="check-item" id="check-audio"><span class="check-icon">&#9675;</span> Audio uploaded</div>
+                        <div class="check-item" id="check-video"><span class="check-icon">&#9675;</span> Video clip selected</div>
+                    </div>
+                    <button class="btn btn-primary btn-large" id="generate-btn" disabled>Generate Meme Video</button>
+                    <div class="progress-bar-container" id="progress-container" style="display:none">
+                        <div class="progress-bar" id="progress-bar"></div>
+                        <span class="progress-text" id="progress-text">Processing...</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Result -->
+            <section class="step result-section" id="step-result" style="display:none">
+                <div class="step-header">
+                    <span class="step-num">&#10003;</span>
+                    <h2>Your Meme is Ready!</h2>
+                </div>
+                <div class="result-area">
+                    <div class="video-preview-wrapper">
+                        <video id="result-video" controls></video>
+                    </div>
+                    <div class="result-actions">
+                        <a class="btn btn-primary" id="download-btn" download="meme.webm">Download Video</a>
+                        <button class="btn btn-secondary" id="new-meme-btn">Make Another</button>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- Hidden elements for processing -->
+    <video id="source-video" style="display:none" muted loop playsinline crossorigin="anonymous"></video>
+    <canvas id="render-canvas" style="display:none"></canvas>
+
+    <script src="/app.js"></script>
+</body>
+</html>
