@@ -21,6 +21,16 @@ const CANVAS_FILTERS = {
     dreamy: 'blur(1px) brightness(1.08) contrast(1.1)',
 };
 
+const FILTER_NAMES = {
+    none: 'Original', vintage: 'Vintage', high_contrast: 'Hi-Contrast',
+    bw: 'B&W', warm: 'Warm', cool: 'Cool', neon: 'Neon', dreamy: 'Dreamy',
+};
+
+const PRESET_NAMES = {
+    tiktok: 'TikTok 9:16', ig_feed: 'IG Feed 1:1', ig_post: 'IG Post 4:5',
+    twitter: 'Twitter 16:9', youtube: 'YouTube 16:9',
+};
+
 // === STATE ===
 const state = {
     audioFile: null,
@@ -35,6 +45,8 @@ const state = {
     exportWidth: 1080,
     exportHeight: 1920,
     filter: 'none',
+    previewPlaying: false,
+    previewAnimFrame: null,
 };
 
 // === DOM REFS ===
@@ -55,6 +67,7 @@ const customClipName = document.getElementById('custom-clip-name');
 const customClipRemove = document.getElementById('custom-clip-remove');
 
 const captionList = document.getElementById('caption-list');
+const captionEmpty = document.getElementById('caption-empty');
 const addCaptionBtn = document.getElementById('add-caption');
 const timelineContainer = document.getElementById('timeline-container');
 const timelineTrack = document.getElementById('timeline-track');
@@ -78,6 +91,26 @@ const checkVideo = document.getElementById('check-video');
 
 const sourceVideo = document.getElementById('source-video');
 const renderCanvas = document.getElementById('render-canvas');
+
+// New MemeLab DOM refs
+const stepNums = [1, 2, 3, 4].map(n => document.getElementById('step-num-' + n));
+const previewSection = document.getElementById('step-preview');
+const previewCanvas = document.getElementById('preview-canvas');
+const previewCanvasContainer = document.getElementById('preview-canvas-container');
+const previewPlayBtn = document.getElementById('preview-play-btn');
+const previewPlayIcon = document.getElementById('preview-play-icon');
+const previewOverlay = document.getElementById('preview-overlay');
+const previewFormat = document.getElementById('preview-format');
+const previewFilter = document.getElementById('preview-filter');
+const confettiContainer = document.getElementById('confetti-container');
+
+// Preview video element (separate from source-video used for rendering)
+const previewVideo = document.createElement('video');
+previewVideo.muted = true;
+previewVideo.loop = true;
+previewVideo.playsInline = true;
+previewVideo.crossOrigin = 'anonymous';
+previewVideo.preload = 'auto';
 
 // === TABS ===
 document.querySelectorAll('.tab').forEach(tab => {
@@ -122,12 +155,13 @@ audioInput.addEventListener('change', () => {
     state.audioFile = file;
     state.audioUrl = URL.createObjectURL(file);
 
-    // Get duration
     const tempAudio = new Audio();
     tempAudio.src = state.audioUrl;
     tempAudio.addEventListener('loadedmetadata', () => {
         state.audioDuration = tempAudio.duration;
         showAudioPreview();
+        markStepComplete(0);
+        scrollToStep('step-video');
     });
     tempAudio.addEventListener('error', () => {
         alert('Could not load audio file.');
@@ -144,17 +178,28 @@ function showAudioPreview() {
     audioPlayer.src = state.audioUrl;
     updateChecklist();
     updateTimeline();
+    updatePreviewVisibility();
 }
 
 function resetAudioDrop() {
     audioDrop.style.display = '';
     audioDrop.innerHTML = `
-        <div class="upload-icon">&#9835;</div>
-        <p>Drag & drop audio or <label for="audio-input" class="browse-link">browse</label></p>
-        <p class="hint">MP3, WAV, M4A, OGG, AAC</p>
+        <div class="upload-icon-wrap">
+            <svg class="upload-svg" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="1.5" opacity="0.3"/><path d="M24 16v16M18 28l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <p class="upload-title">Drop your audio here</p>
+        <p class="upload-sub">or <label for="audio-input" class="browse-link">browse files</label></p>
+        <div class="upload-formats">
+            <span class="format-badge">MP3</span>
+            <span class="format-badge">WAV</span>
+            <span class="format-badge">M4A</span>
+            <span class="format-badge">OGG</span>
+            <span class="format-badge">AAC</span>
+        </div>
     `;
     audioPreview.style.display = 'none';
     audioInput.value = '';
+    setupDragDrop(audioDrop, audioInput);
 }
 
 audioRemove.addEventListener('click', () => {
@@ -163,8 +208,10 @@ audioRemove.addEventListener('click', () => {
     state.audioUrl = null;
     state.audioDuration = 0;
     resetAudioDrop();
+    unmarkStepComplete(0);
     updateChecklist();
     updateTimeline();
+    updatePreviewVisibility();
 });
 
 // === VIDEO CLIPS ===
@@ -204,7 +251,10 @@ function selectPreloadedClip(clip, card) {
         state.customVideoFile = null;
     }
     customClipPreview.style.display = 'none';
+    markStepComplete(1);
     updateChecklist();
+    updatePreviewVisibility();
+    scrollToStep('step-captions');
 }
 
 videoInput.addEventListener('change', () => {
@@ -223,18 +273,29 @@ videoInput.addEventListener('change', () => {
     customClipVideo.src = url;
     customClipVideo.play().catch(() => {});
     customClipName.textContent = file.name;
+    markStepComplete(1);
     updateChecklist();
+    updatePreviewVisibility();
+    scrollToStep('step-captions');
 });
 
 function resetVideoDrop() {
     videoDrop.style.display = '';
     videoDrop.innerHTML = `
-        <div class="upload-icon">&#9654;</div>
-        <p>Drag & drop video or <label for="video-input" class="browse-link">browse</label></p>
-        <p class="hint">MP4, MOV, WEBM</p>
+        <div class="upload-icon-wrap">
+            <svg class="upload-svg" viewBox="0 0 48 48" fill="none"><rect x="8" y="12" width="32" height="24" rx="4" stroke="currentColor" stroke-width="1.5" opacity="0.3"/><polygon points="20,18 20,30 32,24" fill="currentColor" opacity="0.4"/></svg>
+        </div>
+        <p class="upload-title">Drop your video here</p>
+        <p class="upload-sub">or <label for="video-input" class="browse-link">browse files</label></p>
+        <div class="upload-formats">
+            <span class="format-badge">MP4</span>
+            <span class="format-badge">MOV</span>
+            <span class="format-badge">WEBM</span>
+        </div>
     `;
     customClipPreview.style.display = 'none';
     videoInput.value = '';
+    setupDragDrop(videoDrop, videoInput);
 }
 
 customClipRemove.addEventListener('click', () => {
@@ -243,7 +304,9 @@ customClipRemove.addEventListener('click', () => {
     state.clipType = null;
     state.customVideoFile = null;
     resetVideoDrop();
+    unmarkStepComplete(1);
     updateChecklist();
+    updatePreviewVisibility();
 });
 
 // === CAPTIONS ===
@@ -264,6 +327,7 @@ addCaptionBtn.addEventListener('click', () => {
     });
     renderCaptions();
     updateTimeline();
+    updateCaptionEmpty();
 });
 
 function renderCaptions() {
@@ -321,8 +385,15 @@ function renderCaptions() {
             state.captions = state.captions.filter(c => c.id !== id);
             renderCaptions();
             updateTimeline();
+            updateCaptionEmpty();
         });
     });
+}
+
+function updateCaptionEmpty() {
+    if (captionEmpty) {
+        captionEmpty.style.display = state.captions.length === 0 ? '' : 'none';
+    }
 }
 
 function updateTimeline() {
@@ -355,6 +426,8 @@ presetGrid.querySelectorAll('.preset-card').forEach(card => {
         state.exportPreset = card.dataset.preset;
         state.exportWidth = parseInt(card.dataset.w);
         state.exportHeight = parseInt(card.dataset.h);
+        updatePreviewInfo();
+        resizePreviewCanvas();
     });
 });
 
@@ -364,8 +437,34 @@ filterGrid.querySelectorAll('.filter-btn').forEach(btn => {
         filterGrid.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         state.filter = btn.dataset.filter;
+        updatePreviewInfo();
     });
 });
+
+// === STEP COMPLETION ===
+function markStepComplete(index) {
+    const el = stepNums[index];
+    if (el) {
+        el.classList.add('completed');
+        el.innerHTML = '<svg viewBox="0 0 20 20" width="16" height="16" fill="none"><polyline points="4,10 8,14 16,6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    }
+}
+
+function unmarkStepComplete(index) {
+    const el = stepNums[index];
+    if (el) {
+        el.classList.remove('completed');
+        el.textContent = String(index + 1);
+    }
+}
+
+// === AUTO SCROLL ===
+function scrollToStep(stepId) {
+    setTimeout(() => {
+        const el = document.getElementById(stepId);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 300);
+}
 
 // === CHECKLIST ===
 function updateChecklist() {
@@ -378,11 +477,162 @@ function updateChecklist() {
     checkVideo.querySelector('.check-icon').innerHTML = videoOk ? '&#10003;' : '&#9675;';
 
     generateBtn.disabled = !(audioOk && videoOk);
+    if (audioOk && videoOk) {
+        generateBtn.classList.add('ready');
+    } else {
+        generateBtn.classList.remove('ready');
+    }
+}
+
+// === LIVE PREVIEW ===
+function updatePreviewVisibility() {
+    const show = !!(state.audioFile && state.clipVideoUrl);
+    if (previewSection) {
+        previewSection.style.display = show ? '' : 'none';
+    }
+    if (show) {
+        loadPreviewVideo();
+        updatePreviewInfo();
+        resizePreviewCanvas();
+    } else {
+        stopPreview();
+    }
+}
+
+function loadPreviewVideo() {
+    if (!state.clipVideoUrl) return;
+    previewVideo.src = state.clipVideoUrl;
+    previewVideo.load();
+    previewVideo.addEventListener('loadeddata', () => {
+        if (!state.previewPlaying) {
+            startPreview();
+        }
+    }, { once: true });
+}
+
+function updatePreviewInfo() {
+    if (previewFormat) previewFormat.textContent = PRESET_NAMES[state.exportPreset] || 'TikTok 9:16';
+    if (previewFilter) previewFilter.textContent = FILTER_NAMES[state.filter] || 'Original';
+}
+
+function resizePreviewCanvas() {
+    if (!previewCanvas) return;
+    // Preview canvas is scaled down to fit the UI container
+    const aspect = state.exportWidth / state.exportHeight;
+    const maxH = 400;
+    const maxW = previewCanvasContainer ? previewCanvasContainer.clientWidth - 4 : 300;
+    let w, h;
+    if (aspect >= 1) {
+        w = Math.min(maxW, maxH * aspect);
+        h = w / aspect;
+    } else {
+        h = Math.min(maxH, maxW / aspect);
+        w = h * aspect;
+    }
+    previewCanvas.width = Math.round(w * 2); // 2x for retina
+    previewCanvas.height = Math.round(h * 2);
+    previewCanvas.style.width = Math.round(w) + 'px';
+    previewCanvas.style.height = Math.round(h) + 'px';
+}
+
+function startPreview() {
+    state.previewPlaying = true;
+    previewVideo.play().catch(() => {});
+    if (previewOverlay) previewOverlay.style.display = 'none';
+    updatePlayIcon();
+    renderPreviewLoop();
+}
+
+function stopPreview() {
+    state.previewPlaying = false;
+    previewVideo.pause();
+    if (state.previewAnimFrame) {
+        cancelAnimationFrame(state.previewAnimFrame);
+        state.previewAnimFrame = null;
+    }
+    if (previewOverlay) previewOverlay.style.display = '';
+    updatePlayIcon();
+}
+
+function togglePreview() {
+    if (state.previewPlaying) {
+        stopPreview();
+    } else {
+        startPreview();
+    }
+}
+
+function updatePlayIcon() {
+    if (!previewPlayIcon) return;
+    if (state.previewPlaying) {
+        previewPlayIcon.innerHTML = '<rect x="5" y="4" width="3" height="12" rx="1" fill="currentColor"/><rect x="12" y="4" width="3" height="12" rx="1" fill="currentColor"/>';
+    } else {
+        previewPlayIcon.innerHTML = '<polygon points="5,3 5,17 17,10" fill="currentColor"/>';
+    }
+}
+
+function renderPreviewLoop() {
+    if (!state.previewPlaying || !previewCanvas) return;
+
+    const ctx = previewCanvas.getContext('2d');
+    const cw = previewCanvas.width;
+    const ch = previewCanvas.height;
+    const filterCss = CANVAS_FILTERS[state.filter] || '';
+
+    // Draw video cover
+    const vw = previewVideo.videoWidth || cw;
+    const vh = previewVideo.videoHeight || ch;
+    const scale = Math.max(cw / vw, ch / vh);
+    const sw = cw / scale;
+    const sh = ch / scale;
+    const sx = (vw - sw) / 2;
+    const sy = (vh - sh) / 2;
+
+    ctx.filter = filterCss || 'none';
+    ctx.drawImage(previewVideo, sx, sy, sw, sh, 0, 0, cw, ch);
+    ctx.filter = 'none';
+
+    // Draw captions at the midpoint for preview
+    const previewTime = previewVideo.currentTime || 0;
+    drawCaptionsOnCanvas(ctx, state.captions, previewTime, cw, ch);
+
+    state.previewAnimFrame = requestAnimationFrame(renderPreviewLoop);
+}
+
+if (previewPlayBtn) {
+    previewPlayBtn.addEventListener('click', togglePreview);
+}
+if (previewOverlay) {
+    previewOverlay.addEventListener('click', () => {
+        if (!state.previewPlaying) startPreview();
+    });
+}
+
+// === CONFETTI ===
+function fireConfetti() {
+    if (!confettiContainer) return;
+    confettiContainer.innerHTML = '';
+    const colors = ['#a855f7', '#06b6d4', '#ec4899', '#3b82f6', '#22c55e', '#f59e0b'];
+    for (let i = 0; i < 60; i++) {
+        const piece = document.createElement('div');
+        piece.className = 'confetti-piece';
+        piece.style.left = Math.random() * 100 + '%';
+        piece.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+        piece.style.animationDelay = (Math.random() * 1.5) + 's';
+        piece.style.animationDuration = (2 + Math.random() * 2) + 's';
+        piece.style.width = (6 + Math.random() * 6) + 'px';
+        piece.style.height = (6 + Math.random() * 6) + 'px';
+        piece.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+        piece.style.transform = 'rotate(' + Math.random() * 360 + 'deg)';
+        confettiContainer.appendChild(piece);
+    }
+    setTimeout(() => { confettiContainer.innerHTML = ''; }, 5000);
 }
 
 // === GENERATE ===
 generateBtn.addEventListener('click', () => {
     if (!state.audioFile || !state.clipVideoUrl) return;
+    stopPreview();
     startGeneration();
 });
 
@@ -395,25 +645,21 @@ async function startGeneration() {
     resultSection.style.display = 'none';
 
     try {
-        // Load the video source
         await loadSourceVideo(state.clipVideoUrl);
         progressBar.style.width = '15%';
         progressText.textContent = 'Setting up recording...';
 
-        // Decode audio
         const audioCtx = new AudioContext();
         const audioBuffer = await state.audioFile.arrayBuffer();
         const decodedAudio = await audioCtx.decodeAudioData(audioBuffer);
         const duration = decodedAudio.duration;
 
-        // Set canvas dimensions
         const outW = state.exportWidth;
         const outH = state.exportHeight;
         renderCanvas.width = outW;
         renderCanvas.height = outH;
         const ctx = renderCanvas.getContext('2d');
 
-        // Create an OfflineAudioContext for the audio stream
         const offlineCtx = new OfflineAudioContext(
             decodedAudio.numberOfChannels,
             decodedAudio.length,
@@ -424,28 +670,23 @@ async function startGeneration() {
         offlineSource.connect(offlineCtx.destination);
         offlineSource.start(0);
 
-        // Start rendering audio offline
         const renderedAudioBuffer = await offlineCtx.startRendering();
 
-        // Create a new audio context to play back the rendered buffer for capture
         const playbackCtx = new AudioContext({ sampleRate: renderedAudioBuffer.sampleRate });
         const playbackSource = playbackCtx.createBufferSource();
         playbackSource.buffer = renderedAudioBuffer;
         const destNode = playbackCtx.createMediaStreamDestination();
         playbackSource.connect(destNode);
-        playbackSource.connect(playbackCtx.destination); // also hear it (optional)
+        playbackSource.connect(playbackCtx.destination);
 
-        // Canvas stream
         const fps = 30;
         const canvasStream = renderCanvas.captureStream(fps);
 
-        // Combine canvas video + audio
         const combinedStream = new MediaStream([
             ...canvasStream.getVideoTracks(),
             ...destNode.stream.getAudioTracks(),
         ]);
 
-        // Setup MediaRecorder
         const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
             ? 'video/webm;codecs=vp9,opus'
             : 'video/webm;codecs=vp8,opus';
@@ -463,18 +704,15 @@ async function startGeneration() {
             recorder.onstop = () => resolve();
         });
 
-        // Start recording
         recorder.start(100);
         playbackSource.start(0);
 
-        // Play source video
         sourceVideo.currentTime = 0;
         sourceVideo.play().catch(() => {});
 
         progressBar.style.width = '20%';
         progressText.textContent = 'Recording meme... 0%';
 
-        // Render loop
         const startTime = performance.now();
         const durationMs = duration * 1000;
         const filterCss = CANVAS_FILTERS[state.filter] || '';
@@ -484,20 +722,15 @@ async function startGeneration() {
             const currentTime = elapsed / 1000;
 
             if (elapsed >= durationMs) {
-                // Done
                 recorder.stop();
                 playbackSource.stop();
                 sourceVideo.pause();
                 return;
             }
 
-            // Draw video frame to canvas with cover crop
             drawVideoCover(ctx, sourceVideo, outW, outH, filterCss);
+            drawCaptionsOnCanvas(ctx, state.captions, currentTime, outW, outH);
 
-            // Draw captions
-            drawCaptions(ctx, state.captions, currentTime, outW, outH);
-
-            // Update progress
             const pct = Math.min(95, 20 + Math.round((elapsed / durationMs) * 75));
             progressBar.style.width = pct + '%';
             progressText.textContent = `Recording meme... ${Math.round((elapsed / durationMs) * 100)}%`;
@@ -506,17 +739,13 @@ async function startGeneration() {
         };
 
         requestAnimationFrame(renderFrame);
-
-        // Wait for recording to finish
         await recordingDone;
 
         progressBar.style.width = '100%';
         progressText.textContent = 'Done!';
 
-        // Create blob
         const blob = new Blob(chunks, { type: mimeType });
         const url = URL.createObjectURL(blob);
-
         playbackCtx.close();
 
         setTimeout(() => showResult(url), 300);
@@ -540,38 +769,29 @@ function loadSourceVideo(url) {
 function drawVideoCover(ctx, video, outW, outH, filterCss) {
     const vw = video.videoWidth || outW;
     const vh = video.videoHeight || outH;
-
-    // Calculate cover crop
     const scale = Math.max(outW / vw, outH / vh);
     const sw = outW / scale;
     const sh = outH / scale;
     const sx = (vw - sw) / 2;
     const sy = (vh - sh) / 2;
 
-    if (filterCss) {
-        ctx.filter = filterCss;
-    } else {
-        ctx.filter = 'none';
-    }
-
+    ctx.filter = filterCss || 'none';
     ctx.drawImage(video, sx, sy, sw, sh, 0, 0, outW, outH);
     ctx.filter = 'none';
 }
 
-function drawCaptions(ctx, captions, currentTime, outW, outH) {
+function drawCaptionsOnCanvas(ctx, captions, currentTime, outW, outH) {
     captions.forEach(cap => {
         if (currentTime < cap.start || currentTime > cap.end || !cap.text) return;
 
-        // Font size
         let fontSize;
         if (cap.size === 'small') fontSize = Math.round(outW * 0.04);
         else if (cap.size === 'large') fontSize = Math.round(outW * 0.08);
         else fontSize = Math.round(outW * 0.06);
 
-        ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+        ctx.font = `bold ${fontSize}px 'Inter', Arial, sans-serif`;
         ctx.textAlign = 'center';
 
-        // Position
         let y;
         if (cap.position === 'top') y = fontSize * 2;
         else if (cap.position === 'center') y = outH / 2;
@@ -580,24 +800,17 @@ function drawCaptions(ctx, captions, currentTime, outW, outH) {
         const x = outW / 2;
         const maxWidth = outW * 0.85;
 
-        // Word wrap
         const lines = wrapText(ctx, cap.text, maxWidth);
         const lineHeight = fontSize * 1.3;
         const totalHeight = lines.length * lineHeight;
-
-        // Adjust y for multi-line centering
         let startY = y - totalHeight / 2 + fontSize / 2;
 
         lines.forEach((line, i) => {
             const ly = startY + i * lineHeight;
-
-            // Outline
             ctx.strokeStyle = 'black';
             ctx.lineWidth = fontSize * 0.15;
             ctx.lineJoin = 'round';
             ctx.strokeText(line, x, ly);
-
-            // Fill
             ctx.fillStyle = 'white';
             ctx.fillText(line, x, ly);
         });
@@ -630,11 +843,15 @@ function showResult(blobUrl) {
     resultVideo.play().catch(() => {});
     downloadBtn.href = blobUrl;
     resultSection.scrollIntoView({ behavior: 'smooth' });
+    fireConfetti();
 }
 
 function resetGenerateBtn() {
     generateBtn.disabled = !(state.audioFile && state.clipVideoUrl);
-    generateBtn.innerHTML = 'Generate Meme Video';
+    generateBtn.innerHTML = `
+        <svg viewBox="0 0 20 20" width="18" height="18" fill="none" style="margin-right:8px"><path d="M10 2L12.5 7.5 18 8.5 14 12.5 15 18 10 15.5 5 18 6 12.5 2 8.5 7.5 7.5z" stroke="currentColor" stroke-width="1.5" fill="currentColor" opacity="0.3"/></svg>
+        Generate Meme Video
+    `;
 }
 
 // === RESET ===
@@ -655,7 +872,15 @@ newMemeBtn.addEventListener('click', () => {
     timelineContainer.style.display = 'none';
     resultSection.style.display = 'none';
     progressContainer.style.display = 'none';
+    previewSection.style.display = 'none';
+    confettiContainer.innerHTML = '';
+
+    unmarkStepComplete(0);
+    unmarkStepComplete(1);
+
     updateChecklist();
+    updateCaptionEmpty();
+    stopPreview();
     window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
@@ -670,3 +895,16 @@ function formatTime(seconds) {
 // === INIT ===
 loadClips();
 updateChecklist();
+updateCaptionEmpty();
+updatePreviewInfo();
+
+// Intersection observer for step animations
+const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+        if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+        }
+    });
+}, { threshold: 0.1 });
+
+document.querySelectorAll('.step-animate').forEach(el => observer.observe(el));
